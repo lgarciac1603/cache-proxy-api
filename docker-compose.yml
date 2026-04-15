@@ -1,0 +1,21 @@
+services:
+  cache-proxy-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cache-proxy-api
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: "3000"
+      BACKEND_URL: "http://host.docker.internal:8080"
+      REDIS_URL: "redis://redis:6379"
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: cache-proxy-api-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
