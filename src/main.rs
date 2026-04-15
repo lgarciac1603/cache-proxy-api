@@ -1,5 +1,5 @@
 use dotenvy::dotenv;
-use std::env;
+use std::{ env };
 use axum::{ routing::get, Router };
 
 #[tokio::main]
@@ -10,6 +10,10 @@ async fn main() {
 	let app = Router::new().route("/", get(|| async { "Hello world!" }));
 	let port = env::var("PORT").expect("PORT variable not found");
 
-	let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}")).await.unwrap();
+	let app_url = format!("0.0.0.0:{port}");
+
+	let listener = tokio::net::TcpListener::bind(&app_url).await.unwrap();
 	axum::serve(listener, app).await.unwrap();
+
+	print!("Server running on: {}", app_url);
 }
