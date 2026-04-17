@@ -5,7 +5,6 @@ use dotenvy::dotenv;
 use std::env;
 
 #[tokio::main]
-
 async fn main() {
 	dotenv().ok();
 	let app = routes::create_routes();
