@@ -1,6 +1,12 @@
 {
   "backends": {
-    "users-api": "http://users-service:8080"
+    "coingecko-api": "https://api.coingecko.com/api/v3",
+    "cpp-rest-api": "http://cpp-rest-api:8080",
+    "favorites-api": "http://favorites-api:8090"
   },
-  "routes": [{ "prefix": "/users", "backend": "users-api" }]
+  "routes": [
+    { "prefix": "/providers/coingecko", "backend": "coingecko-api" },
+    { "prefix": "/internal/cpp-rest-api", "backend": "cpp-rest-api" },
+    { "prefix": "/internal/favorites-api", "backend": "favorites-api" }
+  ]
 }
