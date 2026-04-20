@@ -21,6 +21,6 @@ async fn main() {
 	let listener = tokio::net::TcpListener::bind(&app_url).await.unwrap();
 
 	print!("Server running on: {}", app_url);
-	
+
 	axum::serve(listener, app).await.unwrap();
 }
