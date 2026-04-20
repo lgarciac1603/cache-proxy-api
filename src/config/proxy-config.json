@@ -1,0 +1,6 @@
+{
+  "backends": {
+    "users-api": "http://users-service:8080"
+  },
+  "routes": [{ "prefix": "/users", "backend": "users-api" }]
+}
