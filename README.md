@@ -43,6 +43,20 @@ PROXY_CONFIG_PATH=/app/src/config/proxy-config.json
 
 ---
 
+## Local development prerequisites
+
+If you are going to work on this service directly in a development environment, install **Cargo** first (typically by installing the Rust toolchain with `rustup`).
+
+After cloning or updating the repository, fetch the Rust dependencies from this directory:
+
+```bash
+cargo fetch
+```
+
+Run that command from `backend/cache-proxy-api` when this project is used inside the `crypto-dashboard` workspace.
+
+---
+
 ## How it fits into the larger stack
 
 Inside `crypto-dashboard`, this microservice runs as `cache-proxy-api` and receives traffic through:
