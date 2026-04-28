@@ -1,3 +1,3 @@
 pub mod config;
 
-pub use config::{ load_app_config, load_proxy_config };
+pub use config::{ ProxyConfig, load_app_config, load_proxy_config };

@@ -1,8 +1,13 @@
 mod config;
 mod handlers;
 mod routes;
+mod state;
 
 use dotenvy::dotenv;
+use reqwest::Client;
+use std::sync::Arc;
+
+use state::AppState;
 
 #[tokio::main]
 async fn main() {
@@ -15,8 +20,13 @@ async fn main() {
 
 	print!("App config: {:?}", app_config);
 	print!("Proxy config: {:?}", proxy_config);
+
+	let state = AppState {
+		proxy_config: Arc::new(proxy_config),
+		http_client: Client::new(),
+	};
 	
-	let app = routes::create_routes();
+	let app = routes::create_routes().with_state(state);
 	let app_url = format!("0.0.0.0:{}", app_config.port);
 	let listener = tokio::net::TcpListener::bind(&app_url).await.unwrap();
 
