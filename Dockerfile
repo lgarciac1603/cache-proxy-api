@@ -19,6 +19,6 @@ RUN chown -R appuser:appuser /app
 
 USER appuser
 
-EXPOSE 3000
+EXPOSE 8070
 
 CMD ["cache-proxy-api"]

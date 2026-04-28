@@ -1,12 +1,15 @@
-use axum::{ routing::get, Router };
+use axum::{
+    Router,
+    routing::{any, get},
+};
 
-use crate::handlers::{ health, root, info, proxy_place_holder };
+use crate::handlers::{health, info, proxy_request, root};
 use crate::state::AppState;
 
 pub fn create_routes() -> Router<AppState> {
-  Router::new()
-    .route("/", get(root))
-    .route("/health", get(health))
-    .route("/info", get(info))
-    .route("/*path", get(proxy_place_holder))
+    Router::new()
+        .route("/", get(root))
+        .route("/health", get(health))
+        .route("/info", get(info))
+        .route("/{*path}", any(proxy_request))
 }

@@ -7,9 +7,10 @@ In its current state, the project already:
 - starts as an Axum-based API
 - loads global configuration from environment variables
 - loads a `proxy-config.json` file
+- resolves incoming paths against configured route prefixes
+- forwards matching requests to the configured upstream backend
+- caches eligible `GET` responses in Redis
 - exposes basic technical endpoints
-
-It does **not** yet implement the real proxy flow or caching inside the HTTP request path, but it already has the foundation required to resolve which backend matches a given route.
 
 ---
 
@@ -22,6 +23,7 @@ It does **not** yet implement the real proxy flow or caching inside the HTTP req
 | `/` | minimal test response |
 | `/health` | service healthcheck |
 | `/info` | basic microservice information |
+| `/{*path}` | proxy route resolved through `proxy-config.json` |
 
 ### Configuration currently loaded
 
@@ -78,8 +80,14 @@ src/
   handlers/
     handlers.rs
     mod.rs
+  proxy/
+    proxy.rs
+    mod.rs
   routes/
     routes.rs
+    mod.rs
+  state/
+    state.rs
     mod.rs
   main.rs
 ```
@@ -91,6 +99,8 @@ src/
 | `main.rs` | service startup |
 | `src/routes` | HTTP route definitions |
 | `src/handlers` | endpoint handlers |
+| `src/proxy/proxy.rs` | route resolution, cache policy, response reconstruction, proxy errors |
+| `src/state` | shared app state (HTTP client, Redis client, loaded config) |
 | `src/config/config.rs` | env var and JSON loading |
 | `src/config/proxy-config.json` | backend catalog and routing rules |
 
@@ -132,7 +142,11 @@ The current shape of the file is:
     "favorites-api": "http://favorites-api:8090"
   },
   "routes": [
-    { "prefix": "/providers/coingecko", "backend": "coingecko-api" },
+    {
+      "prefix": "/providers/coingecko",
+      "backend": "coingecko-api",
+      "cache_ttl_seconds": 60
+    },
     { "prefix": "/internal/cpp-rest-api", "backend": "cpp-rest-api" },
     { "prefix": "/internal/favorites-api", "backend": "favorites-api" }
   ]
@@ -167,17 +181,19 @@ Each rule says:
 
 - if the request path starts with a given `prefix`
 - then it should resolve to a given `backend`
+- and it can optionally define `cache_ttl_seconds` for Redis-backed `GET` caching
 
 Example:
 
 ```json
-{ "prefix": "/providers/coingecko", "backend": "coingecko-api" }
+{ "prefix": "/providers/coingecko", "backend": "coingecko-api", "cache_ttl_seconds": 60 }
 ```
 
 That means:
 
 - if something like `/providers/coingecko/markets` arrives
 - the service should identify that request as belonging to `coingecko-api`
+- and successful `GET` responses for that route can be cached in Redis for 60 seconds
 
 ---
 
