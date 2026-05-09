@@ -70,6 +70,31 @@ In other words, the frontend does not talk directly to CoinGecko or to the proxy
 
 ---
 
+## Current caching behavior
+
+`cache-proxy-api` is the **second cache layer** in the stack:
+
+1. The Angular frontend may serve selected `GET` requests from its in-memory `CacheService`.
+2. If the frontend does go to `/api-cache/...`, this microservice can still serve the response from Redis.
+3. Only when both layers miss does the proxy call the upstream backend.
+
+### What this microservice caches today
+
+- Only **`GET`** requests are cacheable.
+- A route is cacheable only if it defines `cache_ttl_seconds` in `proxy-config.json`.
+- The current config enables Redis caching for:
+  - `/providers/coingecko/*` with `cache_ttl_seconds: 60`
+
+### What this microservice does not cache today
+
+- `POST`, `PUT`, `PATCH`, or `DELETE` requests
+- Routes without `cache_ttl_seconds`
+- Upstream responses that are not successful
+
+That means the current internal routes for `cpp-rest-api` and `favorites-api` are proxied normally, but are **not** cached in Redis by default.
+
+---
+
 ## Project structure
 
 ```text
@@ -191,7 +216,7 @@ Example:
 
 That means:
 
-- if something like `/providers/coingecko/markets` arrives
+- if something like `/providers/coingecko/coins/markets` arrives
 - the service should identify that request as belonging to `coingecko-api`
 - and successful `GET` responses for that route can be cached in Redis for 60 seconds
 
@@ -283,8 +308,8 @@ That makes the system easier to understand and maintain.
 Today the frontend uses these proxy routes:
 
 ```text
-/api-cache/providers/coingecko/markets
-/api-cache/providers/coingecko/coin/:id
+/api-cache/providers/coingecko/coins/markets
+/api-cache/providers/coingecko/coins/:id
 ```
 
 Because nginx and the Angular dev proxy rewrite the `/api-cache` prefix, the useful path seen by this microservice is:
