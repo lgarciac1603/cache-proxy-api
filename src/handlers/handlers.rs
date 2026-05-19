@@ -43,6 +43,37 @@ pub async fn info() -> Json<InfoResponse> {
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use std::env;
+
+    use axum::Json;
+
+    use super::{health, info, root};
+
+    #[tokio::test]
+    async fn root_returns_hello_world() {
+        assert_eq!(root().await, "Hello world!");
+    }
+
+    #[tokio::test]
+    async fn health_returns_ok() {
+        assert_eq!(health().await, "ok");
+    }
+
+    #[tokio::test]
+    async fn info_reads_port_from_environment() {
+        unsafe { env::set_var("PORT", "9999") };
+        let Json(info_response) = info().await;
+
+        assert_eq!(info_response.service, "cache-proxy-api");
+        assert_eq!(info_response.version, "0.1");
+        assert_eq!(info_response.port, "9999");
+
+        unsafe { env::remove_var("PORT") };
+    }
+}
+
 pub async fn proxy_request(
     State(state): State<AppState>,
     method: Method,

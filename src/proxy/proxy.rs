@@ -1,8 +1,8 @@
 use axum::{
-    Json,
-    body::Body,
-    http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
-    response::{IntoResponse, Response},
+	Json,
+	body::Body,
+	http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode},
+	response::{IntoResponse, Response},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
@@ -11,63 +11,63 @@ use crate::config::ProxyConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedRoute {
-    pub backend: String,
-    pub route_prefix: String,
-    pub upstream_url: String,
-    pub cache_ttl_seconds: Option<u64>,
+	pub backend: String,
+	pub route_prefix: String,
+	pub upstream_url: String,
+	pub cache_ttl_seconds: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CachedResponse {
-    pub status: u16,
-    pub headers: Vec<(String, String)>,
-    pub body_base64: String,
+	pub status: u16,
+	pub headers: Vec<(String, String)>,
+	pub body_base64: String,
 }
 
 impl CachedResponse {
-    pub fn from_parts(status: StatusCode, headers: &HeaderMap, body: &[u8]) -> Self {
-        Self {
-            status: status.as_u16(),
-            headers: headers
-                .iter()
-                .filter(|(name, _)| should_forward_header(name))
-                .filter_map(|(name, value)| {
-                    value
-                        .to_str()
-                        .ok()
-                        .map(|value| (name.as_str().to_string(), value.to_string()))
-                })
-                .collect(),
-            body_base64: STANDARD.encode(body),
-        }
-    }
+	pub fn from_parts(status: StatusCode, headers: &HeaderMap, body: &[u8]) -> Self {
+		Self {
+			status: status.as_u16(),
+			headers: headers
+				.iter()
+				.filter(|(name, _)| should_forward_header(name))
+				.filter_map(|(name, value)| {
+					value
+						.to_str()
+						.ok()
+						.map(|value| (name.as_str().to_string(), value.to_string()))
+				})
+				.collect(),
+			body_base64: STANDARD.encode(body),
+		}
+	}
 
-    pub fn into_response(self, cache_status: &str) -> Result<Response, ProxyError> {
-        let status = StatusCode::from_u16(self.status).map_err(|err| {
-            ProxyError::internal(format!("Cached response had an invalid status code: {err}"))
-        })?;
-        let body = STANDARD.decode(self.body_base64).map_err(|err| {
-            ProxyError::internal(format!("Cached response body was invalid: {err}"))
-        })?;
+	pub fn into_response(self, cache_status: &str) -> Result<Response, ProxyError> {
+			let status = StatusCode::from_u16(self.status).map_err(|err| {
+					ProxyError::internal(format!("Cached response had an invalid status code: {err}"))
+			})?;
+			let body = STANDARD.decode(self.body_base64).map_err(|err| {
+					ProxyError::internal(format!("Cached response body was invalid: {err}"))
+			})?;
 
-        let mut headers = HeaderMap::new();
-        for (name, value) in self.headers {
-            let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|err| {
-                ProxyError::internal(format!(
-                    "Cached response had an invalid header name '{name}': {err}"
-                ))
-            })?;
-            let header_value = HeaderValue::from_str(&value).map_err(|err| {
-                ProxyError::internal(format!(
-                    "Cached response had an invalid header value for '{name}': {err}"
-                ))
-            })?;
+			let mut headers = HeaderMap::new();
+			for (name, value) in self.headers {
+					let header_name = HeaderName::from_bytes(name.as_bytes()).map_err(|err| {
+							ProxyError::internal(format!(
+									"Cached response had an invalid header name '{name}': {err}"
+							))
+					})?;
+					let header_value = HeaderValue::from_str(&value).map_err(|err| {
+							ProxyError::internal(format!(
+									"Cached response had an invalid header value for '{name}': {err}"
+							))
+					})?;
 
-            headers.append(header_name, header_value);
-        }
+					headers.append(header_name, header_value);
+			}
 
-        Ok(build_response(status, &headers, body, cache_status))
-    }
+			Ok(build_response(status, &headers, body, cache_status))
+	}
 }
 
 #[derive(Debug)]
@@ -279,7 +279,20 @@ mod tests {
         state::AppState,
     };
 
-    use super::{CachedResponse, build_cache_key, resolve_route, should_bypass_cache};
+    use super::{
+        build_cache_key,
+        build_response,
+        build_upstream_url,
+        CachedResponse,
+        route_matches_path,
+        resolve_route,
+        should_bypass_cache,
+        should_cache_request,
+        should_forward_header,
+    };
+    use base64::{engine::general_purpose::STANDARD, Engine};
+
+    use axum::http::HeaderName;
 
     fn sample_proxy_config() -> ProxyConfig {
         let mut backends = HashMap::new();
@@ -352,6 +365,111 @@ mod tests {
             &HeaderMap::new(),
             Some("vs_currency=usd")
         ));
+    }
+
+    #[test]
+    fn should_cache_request_only_get_and_non_bypassed_requests() {
+        assert_eq!(should_cache_request(&Method::GET, Some(20), false), Some(20));
+        assert_eq!(should_cache_request(&Method::POST, Some(20), false), None);
+        assert_eq!(should_cache_request(&Method::GET, Some(20), true), None);
+    }
+
+    #[test]
+    fn should_forward_header_filters_disallowed_headers() {
+        assert!(!should_forward_header(&HeaderName::from_static("host")));
+        assert!(!should_forward_header(&HeaderName::from_static("connection")));
+        assert!(!should_forward_header(&HeaderName::from_static("upgrade")));
+        assert!(should_forward_header(&HeaderName::from_static("content-type")));
+        assert!(should_forward_header(&HeaderName::from_static("x-custom-header")));
+    }
+
+    #[test]
+    fn build_response_filters_headers_and_adds_x_cache() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", HeaderValue::from_static("application/json"));
+        headers.insert("host", HeaderValue::from_static("example.com"));
+
+        let response = build_response(
+            StatusCode::OK,
+            &headers,
+            b"hello".to_vec(),
+            "MISS",
+        );
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()["x-cache"], "MISS");
+        assert_eq!(response.headers()["content-type"], "application/json");
+        assert!(!response.headers().contains_key("host"));
+    }
+
+    #[test]
+    fn build_upstream_url_joins_suffix_and_query() {
+        assert_eq!(build_upstream_url("https://api.example.com/", "", None), "https://api.example.com");
+        assert_eq!(
+            build_upstream_url("https://api.example.com", "coin/bitcoin", Some("vs_currency=usd")),
+            "https://api.example.com/coin/bitcoin?vs_currency=usd"
+        );
+    }
+
+    #[test]
+    fn route_matches_path_requires_segment_boundaries() {
+        assert!(route_matches_path("/providers", "/providers"));
+        assert!(route_matches_path("/providers", "/providers/coingecko"));
+        assert!(!route_matches_path("/providers", "/providerscoingecko"));
+    }
+
+    #[test]
+    fn route_matches_path_accepts_exact_prefix_with_no_suffix() {
+        assert!(route_matches_path("/providers/coingecko", "/providers/coingecko"));
+        assert!(!route_matches_path("/providers/coingecko", "/providers/coingecko2"));
+    }
+
+    #[test]
+    fn should_cache_request_returns_none_when_ttl_is_missing() {
+        assert_eq!(should_cache_request(&Method::GET, None, false), None);
+    }
+
+    #[test]
+    fn should_forward_header_rejects_cache_control_headers() {
+        assert!(!should_forward_header(&HeaderName::from_static("x-cache")));
+    }
+
+    #[test]
+    fn cached_response_into_response_returns_internal_error_for_invalid_status() {
+        let cached = CachedResponse {
+            status: 0,
+            headers: vec![("content-type".to_string(), "application/json".to_string())],
+            body_base64: STANDARD.encode(b"test"),
+        };
+
+        let err = cached.into_response("HIT").unwrap_err();
+        assert_eq!(err.status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn resolves_route_with_exact_prefix_and_no_query() {
+        let config = sample_proxy_config();
+        let resolved = resolve_route(&config, "/providers/coingecko", None).unwrap();
+
+        assert_eq!(resolved.upstream_url, "https://api.coingecko.com/api/v3");
+        assert_eq!(resolved.cache_ttl_seconds, Some(60));
+    }
+
+    #[test]
+    fn resolve_route_returns_error_for_unknown_backend() {
+        let mut config = sample_proxy_config();
+        config.routes[1].backend = "missing-backend".to_string();
+
+        let err = resolve_route(&config, "/providers/coingecko", None).unwrap_err();
+        assert_eq!(err.status, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn resolve_route_returns_not_found_for_non_matching_path() {
+        let config = sample_proxy_config();
+
+        let err = resolve_route(&config, "/unknown/path", None).unwrap_err();
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
     }
 
     #[test]
